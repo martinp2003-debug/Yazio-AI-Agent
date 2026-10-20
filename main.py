@@ -1,11 +1,14 @@
 import asyncio
 import os
+from pathlib import Path
 
 from agents import Agent, Runner, SQLiteSession
 from agents.mcp import MCPServerStdio
 from dotenv import load_dotenv
 
 from agent import build_agent_instructions, create_yazio_mcp_server
+from data import SessionRecord
+from services import SessionStoreService
 
 
 # Charge les variables du fichier .env dans l'environnement.
@@ -21,37 +24,89 @@ def create_agent(yazio_mcp: MCPServerStdio) -> Agent:
     )
 
 
-async def run_conversation(agent: Agent) -> None:
-    """Gère uniquement l'interface de conversation."""
-    # TODO 1 : remplace cet identifiant par un identifiant propre à chaque utilisateur.
-    # Sans db_path, la conversation est conservée uniquement pendant ce programme.
-    session = SQLiteSession("utilisateur-demo")
+async def prompt_new_session(store: SessionStoreService) -> SessionRecord:
+    title = await asyncio.to_thread(input, "Titre (facultatif) : ")
+    return store.create_session(title)
 
-    print("Discussion lancée. Tape 'quitter' pour terminer.\n")
 
-    # TODO 2 : transforme cette boucle pour accepter aussi une commande "nouvelle"
-    # qui efface la session et recommence une conversation vide.
+async def select_session(store: SessionStoreService) -> SessionRecord | None:
+    """Propose de créer une conversation ou d'en recharger une."""
     while True:
-        user_message = await asyncio.to_thread(input, "Toi : ")
+        print("\n1. Nouvelle conversation")
+        print("2. Recharger une conversation")
+        print("q. Quitter")
+        choice = (await asyncio.to_thread(input, "Choix : ")).strip().lower()
 
-        # TODO 3 : ajoute d'autres commandes de sortie si tu le souhaites.
-        command = user_message.strip().lower()
+        if choice == "1":
+            return await prompt_new_session(store)
 
-        if command == "quitter":
-            print("Conversation terminée.")
-            break
+        if choice == "2":
+            sessions = store.list_sessions()
+            if not sessions:
+                print("Aucune conversation enregistrée.")
+                continue
 
-        if command == "nouvelle conversation":
-            await session.clear_session()
-            print("Nouvelle conversation démarrée.")
-            continue
+            for index, conversation in enumerate(sessions, start=1):
+                updated_at = conversation.updated_at.astimezone().strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+                print(
+                    f"{index}. {conversation.title} "
+                    f"({conversation.session_id[:8]}, {updated_at})"
+                )
 
-        if not command:
-            continue
+            selected = (
+                await asyncio.to_thread(input, "Numéro de la conversation : ")
+            ).strip()
+            if not selected.isdigit() or not 1 <= int(selected) <= len(sessions):
+                print("Sélection invalide.")
+                continue
 
-        # La même session redonne l'historique à l'agent à chaque tour.
-        result = await Runner.run(agent, user_message, session=session)
-        print(f"\n{agent.name} : {result.final_output}\n")
+            return sessions[int(selected) - 1]
+
+        if choice == "q":
+            return None
+
+        print("Choix invalide.")
+
+
+async def run_conversation(
+    agent: Agent,
+    store: SessionStoreService,
+    conversation: SessionRecord,
+) -> None:
+    """Gère l'interface et le changement de conversation."""
+    session: SQLiteSession = store.open_session(conversation.session_id)
+
+    print(f"\nConversation : {conversation.title}")
+    print(f"Session : {conversation.session_id}")
+    print("Tape 'nouvelle conversation' ou 'quitter'.\n")
+
+    try:
+        while True:
+            user_message = await asyncio.to_thread(input, "Toi : ")
+            command = user_message.strip().lower()
+
+            if command == "quitter":
+                print("Conversation terminée.")
+                break
+
+            if command == "nouvelle conversation":
+                session.close()
+                conversation = await prompt_new_session(store)
+                session = store.open_session(conversation.session_id)
+                print(f"Nouvelle conversation : {conversation.title}")
+                print(f"Session : {conversation.session_id}\n")
+                continue
+
+            if not command:
+                continue
+
+            result = await Runner.run(agent, user_message, session=session)
+            store.mark_session_used(session.session_id)
+            print(f"\n{agent.name} : {result.final_output}\n")
+    finally:
+        session.close()
 
 
 async def main() -> None:
@@ -61,13 +116,16 @@ async def main() -> None:
             "et ajoute ta clé API."
         )
 
-    yazio_mcp = create_yazio_mcp_server()
+    db_path = Path(os.getenv("AGENT_DB_PATH", "storage/conversations.db"))
+    store = SessionStoreService(db_path)
+    conversation = await select_session(store)
+    if conversation is None:
+        return
 
-    # Le contexte démarre le sous-processus MCP ici et garantit sa fermeture,
-    # même si la conversation lève une exception.
+    yazio_mcp = create_yazio_mcp_server()
     async with yazio_mcp:
         agent = create_agent(yazio_mcp)
-        await run_conversation(agent)
+        await run_conversation(agent, store, conversation)
 
 
 if __name__ == "__main__":
