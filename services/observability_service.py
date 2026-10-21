@@ -49,7 +49,12 @@ class ObservabilityService:
         return cls(client)
 
     @contextmanager
-    def observe_turn(self, session_id: str) -> Iterator[None]:
+    def observe_turn(
+        self,
+        session_id: str,
+        *,
+        channel: str = "cli",
+    ) -> Iterator[None]:
         """Crée une trace par tour et la rattache à la conversation."""
         if self._client is None:
             yield
@@ -57,7 +62,7 @@ class ObservabilityService:
 
         with propagate_attributes(
             session_id=session_id,
-            tags=["yazio-agent", "cli"],
+            tags=["yazio-agent", channel],
             trace_name="yazio-agent-turn",
         ):
             with self._client.start_as_current_observation(

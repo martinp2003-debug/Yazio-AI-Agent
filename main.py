@@ -3,25 +3,15 @@ import os
 from pathlib import Path
 
 from agents import Agent, Runner, SQLiteSession
-from agents.mcp import MCPServerStdio
 from dotenv import load_dotenv
 
-from agent import build_agent_instructions, create_yazio_mcp_server
+from agent import create_agent, create_yazio_mcp_server
 from data import SessionRecord
 from services import ObservabilityService, SessionStoreService
 
 
 # Charge les variables du fichier .env dans l'environnement.
 load_dotenv()
-
-
-def create_agent(yazio_mcp: MCPServerStdio) -> Agent:
-    """Construit l'agent et lui injecte ses dépendances."""
-    return Agent(
-        name="Assistant Yazio",
-        instructions=build_agent_instructions,
-        mcp_servers=[yazio_mcp],
-    )
 
 
 async def prompt_new_session(store: SessionStoreService) -> SessionRecord:
@@ -71,7 +61,7 @@ async def select_session(store: SessionStoreService) -> SessionRecord | None:
 
 
 async def run_conversation(
-    agent: Agent,
+    agent: Agent[None],
     store: SessionStoreService,
     conversation: SessionRecord,
     observability: ObservabilityService,
