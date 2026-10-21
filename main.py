@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from agent import build_agent_instructions, create_yazio_mcp_server
 from data import SessionRecord
-from services import SessionStoreService
+from services import ObservabilityService, SessionStoreService
 
 
 # Charge les variables du fichier .env dans l'environnement.
@@ -74,6 +74,7 @@ async def run_conversation(
     agent: Agent,
     store: SessionStoreService,
     conversation: SessionRecord,
+    observability: ObservabilityService,
 ) -> None:
     """Gère l'interface et le changement de conversation."""
     session: SQLiteSession = store.open_session(conversation.session_id)
@@ -102,7 +103,8 @@ async def run_conversation(
             if not command:
                 continue
 
-            result = await Runner.run(agent, user_message, session=session)
+            with observability.observe_turn(session.session_id):
+                result = await Runner.run(agent, user_message, session=session)
             store.mark_session_used(session.session_id)
             print(f"\n{agent.name} : {result.final_output}\n")
     finally:
@@ -118,14 +120,24 @@ async def main() -> None:
 
     db_path = Path(os.getenv("AGENT_DB_PATH", "storage/conversations.db"))
     store = SessionStoreService(db_path)
-    conversation = await select_session(store)
-    if conversation is None:
-        return
+    observability = ObservabilityService.from_env()
 
-    yazio_mcp = create_yazio_mcp_server()
-    async with yazio_mcp:
-        agent = create_agent(yazio_mcp)
-        await run_conversation(agent, store, conversation)
+    try:
+        conversation = await select_session(store)
+        if conversation is None:
+            return
+
+        yazio_mcp = create_yazio_mcp_server()
+        async with yazio_mcp:
+            agent = create_agent(yazio_mcp)
+            await run_conversation(
+                agent,
+                store,
+                conversation,
+                observability,
+            )
+    finally:
+        observability.flush()
 
 
 if __name__ == "__main__":
