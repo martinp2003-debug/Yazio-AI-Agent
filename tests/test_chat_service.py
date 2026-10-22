@@ -101,6 +101,26 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
         self.store.mark_session_used.assert_not_called()
         session.close.assert_called_once_with()
 
+    @patch("services.chat_service.Runner.run", new_callable=AsyncMock)
+    async def test_send_message_accepts_cli_channel(
+        self,
+        run_agent: AsyncMock,
+    ) -> None:
+        session = MagicMock()
+        self.store.open_session.return_value = session
+        run_agent.return_value = MagicMock(final_output="C'est enregistré.")
+
+        await self.service.send_message(
+            "session-123",
+            "Une pomme",
+            channel="cli",
+        )
+
+        self.observability.observe_turn.assert_called_once_with(
+            "session-123",
+            channel="cli",
+        )
+
     async def test_empty_message_is_rejected_before_opening_session(self) -> None:
         with self.assertRaisesRegex(ValueError, "vide"):
             await self.service.send_message("session-123", "   ")

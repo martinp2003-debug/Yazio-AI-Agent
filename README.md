@@ -2,7 +2,7 @@
 
 Ce projet vise à créer un petit agent IA avec lequel interagir afin d'exploiter et de compléter les fonctionnalités proposées par le MCP YAZIO.
 
-## Lancer l'interface
+## Lancer l'interface web
 
 Après avoir configuré `.env`, démarrer l'application avec :
 
@@ -12,6 +12,14 @@ uv run uvicorn app:app --reload
 
 Ouvre ensuite [http://localhost:8000](http://localhost:8000). L'application doit
 rester sur un seul worker afin de ne démarrer qu'un processus MCP YAZIO.
+
+## Lancer l'interface terminal
+
+Le même service de conversation peut être utilisé sans interface web :
+
+```bash
+uv run python cli.py
+```
 
 ## Observabilité avec Langfuse
 

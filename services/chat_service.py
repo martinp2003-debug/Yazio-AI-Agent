@@ -14,6 +14,9 @@ class DisplayMessage(TypedDict):
     content: str
 
 
+ChatChannel = Literal["web", "cli"]
+
+
 class ChatService:
     """Orchestre les conversations sans dépendre de l'interface utilisateur."""
 
@@ -41,7 +44,13 @@ class ChatService:
         finally:
             session.close()
 
-    async def send_message(self, session_id: str, message: str) -> str:
+    async def send_message(
+        self,
+        session_id: str,
+        message: str,
+        *,
+        channel: ChatChannel = "web",
+    ) -> str:
         if not isinstance(message, str):
             raise TypeError("Le message doit être une chaîne de caractères.")
 
@@ -51,7 +60,7 @@ class ChatService:
 
         session = self._store.open_session(session_id)
         try:
-            with self._observability.observe_turn(session_id, channel="web"):
+            with self._observability.observe_turn(session_id, channel=channel):
                 result = await Runner.run(
                     self._agent,
                     normalized_message,

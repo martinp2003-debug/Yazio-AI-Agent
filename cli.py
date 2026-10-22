@@ -2,24 +2,23 @@ import asyncio
 import os
 from pathlib import Path
 
-from agents import Agent, Runner, SQLiteSession
 from dotenv import load_dotenv
 
 from agent import create_agent, create_yazio_mcp_server
 from data import SessionRecord
-from services import ObservabilityService, SessionStoreService
+from services import ChatService, ObservabilityService, SessionStoreService
 
 
 # Charge les variables du fichier .env dans l'environnement.
 load_dotenv()
 
 
-async def prompt_new_session(store: SessionStoreService) -> SessionRecord:
+async def prompt_new_session(chat_service: ChatService) -> SessionRecord:
     title = await asyncio.to_thread(input, "Titre (facultatif) : ")
-    return store.create_session(title)
+    return chat_service.create_conversation(title)
 
 
-async def select_session(store: SessionStoreService) -> SessionRecord | None:
+async def select_session(chat_service: ChatService) -> SessionRecord | None:
     """Propose de créer une conversation ou d'en recharger une."""
     while True:
         print("\n1. Nouvelle conversation")
@@ -28,10 +27,10 @@ async def select_session(store: SessionStoreService) -> SessionRecord | None:
         choice = (await asyncio.to_thread(input, "Choix : ")).strip().lower()
 
         if choice == "1":
-            return await prompt_new_session(store)
+            return await prompt_new_session(chat_service)
 
         if choice == "2":
-            sessions = store.list_sessions()
+            sessions = chat_service.list_conversations()
             if not sessions:
                 print("Aucune conversation enregistrée.")
                 continue
@@ -61,44 +60,38 @@ async def select_session(store: SessionStoreService) -> SessionRecord | None:
 
 
 async def run_conversation(
-    agent: Agent[None],
-    store: SessionStoreService,
+    chat_service: ChatService,
     conversation: SessionRecord,
-    observability: ObservabilityService,
+    assistant_name: str,
 ) -> None:
     """Gère l'interface et le changement de conversation."""
-    session: SQLiteSession = store.open_session(conversation.session_id)
-
     print(f"\nConversation : {conversation.title}")
     print(f"Session : {conversation.session_id}")
     print("Tape 'nouvelle conversation' ou 'quitter'.\n")
 
-    try:
-        while True:
-            user_message = await asyncio.to_thread(input, "Toi : ")
-            command = user_message.strip().lower()
+    while True:
+        user_message = await asyncio.to_thread(input, "Toi : ")
+        command = user_message.strip().lower()
 
-            if command == "quitter":
-                print("Conversation terminée.")
-                break
+        if command == "quitter":
+            print("Conversation terminée.")
+            break
 
-            if command == "nouvelle conversation":
-                session.close()
-                conversation = await prompt_new_session(store)
-                session = store.open_session(conversation.session_id)
-                print(f"Nouvelle conversation : {conversation.title}")
-                print(f"Session : {conversation.session_id}\n")
-                continue
+        if command == "nouvelle conversation":
+            conversation = await prompt_new_session(chat_service)
+            print(f"Nouvelle conversation : {conversation.title}")
+            print(f"Session : {conversation.session_id}\n")
+            continue
 
-            if not command:
-                continue
+        if not command:
+            continue
 
-            with observability.observe_turn(session.session_id):
-                result = await Runner.run(agent, user_message, session=session)
-            store.mark_session_used(session.session_id)
-            print(f"\n{agent.name} : {result.final_output}\n")
-    finally:
-        session.close()
+        response = await chat_service.send_message(
+            conversation.session_id,
+            user_message,
+            channel="cli",
+        )
+        print(f"\n{assistant_name} : {response}\n")
 
 
 async def main() -> None:
@@ -113,18 +106,18 @@ async def main() -> None:
     observability = ObservabilityService.from_env()
 
     try:
-        conversation = await select_session(store)
-        if conversation is None:
-            return
-
         yazio_mcp = create_yazio_mcp_server()
         async with yazio_mcp:
             agent = create_agent(yazio_mcp)
+            chat_service = ChatService(agent, store, observability)
+            conversation = await select_session(chat_service)
+            if conversation is None:
+                return
+
             await run_conversation(
-                agent,
-                store,
+                chat_service,
                 conversation,
-                observability,
+                agent.name,
             )
     finally:
         observability.flush()
