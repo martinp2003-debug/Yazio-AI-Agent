@@ -9,33 +9,33 @@ flowchart LR
     user([Utilisateur])
 
     subgraph interfaces[Interfaces]
-        web_entry[Serveur web<br/>app.py · FastAPI + Uvicorn]
-        web[Interface Gradio<br/>interfaces/web]
-        cli_entry[Point d'entrée<br/>cli.py]
+        web_entry[Serveur web<br/>app.py]
+        web[Interface Gradio<br/>interfaces/web/gradio_app.py]
+        cli_entry[Point d'entrée terminal<br/>cli.py]
         cli[Interface terminal<br/>interfaces/cli.py]
         web_entry --> web
         cli_entry --> cli
     end
 
-    subgraph application[Application]
-        bootstrap[ApplicationContainer<br/>bootstrap.py]
-        chat[ChatService<br/>orchestration des conversations]
-        conversations[ConversationManager<br/>cycle de vie des conversations]
-        observability[ObservabilityService<br/>traces par tour]
+    subgraph application[Cœur applicatif]
+        bootstrap[build_application + ApplicationContainer<br/>bootstrap.py]
+        chat[ChatService<br/>services/chat_service.py]
+        conversations[ConversationManager<br/>services/conversation_manager.py]
+        observability[ObservabilityService<br/>services/observability_service.py]
     end
 
     subgraph agent_layer[Agent IA]
-        runner[OpenAI Agents SDK<br/>Runner + Agent]
-        prompt[System Prompt<br/>et contexte temporel]
-        mcp_client[Client MCP<br/>MCPServerStdio]
-        prompt --> runner
-        runner --> mcp_client
+        agent[Agent OpenAI<br/>agent/yazio_agent.py]
+        prompt[Prompt système<br/>agent/system_prompt.py]
+        mcp_client[Client MCP<br/>agent/yazio_mcp_server.py]
+        prompt --> agent
+        agent --> mcp_client
     end
 
     subgraph persistence[Persistance locale]
-        repository[ConversationRepository<br/>métadonnées]
-        history_store[AgentHistoryStore<br/>adaptateur du SDK]
-        history[SQLiteSession<br/>historique de l'agent]
+        repository[ConversationRepository<br/>data/conversation_repository.py]
+        history_store[AgentHistoryStore<br/>data/agent_history_store.py]
+        history[SQLiteSession<br/>OpenAI Agents SDK]
         sqlite[(storage/conversations.db)]
         repository --> sqlite
         history_store --> history
@@ -44,7 +44,7 @@ flowchart LR
 
     subgraph external[Services externes]
         openai[API OpenAI]
-        mcp[MCP YAZIO<br/>processus enfant en stdio]
+        mcp[MCP YAZIO<br/>processus enfant]
         yazio[Services YAZIO]
         langfuse[Langfuse]
         mcp --> yazio
@@ -52,20 +52,17 @@ flowchart LR
 
     user --> web_entry
     user --> cli_entry
-    web_entry -.-> bootstrap
-    cli_entry -.-> bootstrap
+    web_entry -. démarre .-> bootstrap
+    cli_entry -. démarre .-> bootstrap
+    bootstrap -. assemble .-> chat
     web --> chat
     cli --> chat
-    bootstrap -.-> chat
-    bootstrap -.-> conversations
-    bootstrap -.-> observability
-    bootstrap -.-> runner
-    chat --> runner
+    chat --> agent
     chat --> conversations
     chat --> observability
     conversations --> repository
     conversations --> history_store
-    runner --> openai
+    agent --> openai
     mcp_client --> mcp
     observability --> langfuse
 
@@ -77,7 +74,7 @@ flowchart LR
 
     class web_entry,web,cli_entry,cli interfaceNode
     class bootstrap,chat,conversations,observability applicationNode
-    class runner,prompt,mcp_client agentNode
+    class agent,prompt,mcp_client agentNode
     class repository,history_store,history,sqlite persistenceNode
     class openai,mcp,yazio,langfuse externalNode
 
@@ -88,11 +85,16 @@ flowchart LR
     style external fill:#FFF1F2,stroke:#FB7185,stroke-width:2px
 ```
 
-`bootstrap.py` assemble une seule fois les services partagés par les interfaces
-web et terminal. Le service de conversation exécute l'agent avec un historique
-persistant, tandis que l'agent appelle les outils YAZIO via un processus MCP
-séparé. L'observabilité Langfuse est optionnelle et se configure par variables
-d'environnement.
+Les flèches pleines représentent le flux d'exécution. Les flèches pointillées
+représentent uniquement le démarrage : le point d'entrée appelle
+`build_application()`, puis `bootstrap.py` construit le graphe de dépendances et
+renvoie un `ApplicationContainer`. Une fois l'application lancée, les messages
+passent directement de l'interface au `ChatService`, sans repasser par le
+bootstrap.
+
+Le container gère aussi le cycle de vie du processus MCP et l'envoi des traces
+avant l'arrêt. L'historique et les métadonnées des conversations sont conservés
+localement dans SQLite. Langfuse reste facultatif.
 
 ## Lancer l'interface web
 
