@@ -8,24 +8,26 @@ from services.chat_service import ChatService
 class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.agent = MagicMock()
-        self.store = MagicMock()
+        self.conversations = MagicMock()
         self.observability = MagicMock()
         self.observability.observe_turn.return_value = nullcontext()
         self.service = ChatService(
             self.agent,
-            self.store,
+            self.conversations,
             self.observability,
         )
 
-    def test_conversation_operations_are_delegated_to_store(self) -> None:
+    def test_conversation_operations_are_delegated_to_manager(self) -> None:
         created = MagicMock()
         conversations = [MagicMock(), MagicMock()]
-        self.store.create_session.return_value = created
-        self.store.list_sessions.return_value = conversations
+        self.conversations.create_conversation.return_value = created
+        self.conversations.list_conversations.return_value = conversations
 
         self.assertIs(self.service.create_conversation("Déjeuner"), created)
         self.assertIs(self.service.list_conversations(), conversations)
-        self.store.create_session.assert_called_once_with("Déjeuner")
+        self.conversations.create_conversation.assert_called_once_with(
+            "Déjeuner"
+        )
 
     async def test_load_history_keeps_only_displayable_messages(self) -> None:
         session = MagicMock()
@@ -45,7 +47,7 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
                 },
             ]
         )
-        self.store.open_session.return_value = session
+        self.conversations.open_history.return_value = session
 
         history = await self.service.load_history("session-123")
 
@@ -64,7 +66,7 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
         run_agent: AsyncMock,
     ) -> None:
         session = MagicMock()
-        self.store.open_session.return_value = session
+        self.conversations.open_history.return_value = session
         result = MagicMock(final_output="C'est enregistré.")
         run_agent.return_value = result
 
@@ -83,7 +85,9 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
             "session-123",
             channel="web",
         )
-        self.store.mark_session_used.assert_called_once_with("session-123")
+        self.conversations.mark_conversation_used.assert_called_once_with(
+            "session-123"
+        )
         session.close.assert_called_once_with()
 
     @patch("services.chat_service.Runner.run", new_callable=AsyncMock)
@@ -92,13 +96,13 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
         run_agent: AsyncMock,
     ) -> None:
         session = MagicMock()
-        self.store.open_session.return_value = session
+        self.conversations.open_history.return_value = session
         run_agent.side_effect = RuntimeError("Agent indisponible")
 
         with self.assertRaisesRegex(RuntimeError, "Agent indisponible"):
             await self.service.send_message("session-123", "Une pomme")
 
-        self.store.mark_session_used.assert_not_called()
+        self.conversations.mark_conversation_used.assert_not_called()
         session.close.assert_called_once_with()
 
     @patch("services.chat_service.Runner.run", new_callable=AsyncMock)
@@ -107,7 +111,7 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
         run_agent: AsyncMock,
     ) -> None:
         session = MagicMock()
-        self.store.open_session.return_value = session
+        self.conversations.open_history.return_value = session
         run_agent.return_value = MagicMock(final_output="C'est enregistré.")
 
         await self.service.send_message(
@@ -125,7 +129,7 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "vide"):
             await self.service.send_message("session-123", "   ")
 
-        self.store.open_session.assert_not_called()
+        self.conversations.open_history.assert_not_called()
 
     async def test_non_string_message_is_rejected_clearly(self) -> None:
         with self.assertRaisesRegex(TypeError, "chaîne"):
@@ -134,7 +138,7 @@ class ChatServiceTest(unittest.IsolatedAsyncioTestCase):
                 ["Une pomme"],  # type: ignore[arg-type]
             )
 
-        self.store.open_session.assert_not_called()
+        self.conversations.open_history.assert_not_called()
 
 
 if __name__ == "__main__":

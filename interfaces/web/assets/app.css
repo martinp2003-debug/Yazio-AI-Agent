@@ -1,0 +1,141 @@
+:root {
+    --yazio-bg: #fff8fa;
+    --yazio-surface: #ffffff;
+    --yazio-ink: #301b2b;
+    --yazio-muted: #796b75;
+    --yazio-berry: #e94f6d;
+    --yazio-berry-dark: #bf334f;
+    --yazio-sage: #ddebd9;
+    --yazio-line: #eadde2;
+}
+
+.gradio-container {
+    background: var(--yazio-bg) !important;
+    color: var(--yazio-ink) !important;
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif !important;
+    max-width: none !important;
+}
+
+#app-header {
+    align-items: center;
+    border-bottom: 1px solid var(--yazio-line);
+    margin-bottom: 1rem;
+    padding: 0.35rem 0 1rem;
+}
+
+#brand-lockup h1 {
+    color: var(--yazio-ink);
+    font-size: clamp(1.55rem, 3vw, 2.35rem);
+    font-weight: 650;
+    letter-spacing: -0.045em;
+    line-height: 1;
+    margin: 0;
+}
+
+#brand-lockup p {
+    color: var(--yazio-muted);
+    margin: 0.45rem 0 0;
+}
+
+#status-pill {
+    align-items: center;
+    background: var(--yazio-sage);
+    border-radius: 999px;
+    color: #35523b;
+    display: inline-flex;
+    font-size: 0.78rem;
+    font-weight: 650;
+    gap: 0.45rem;
+    padding: 0.45rem 0.75rem;
+    width: fit-content;
+}
+
+#status-pill::before {
+    background: #5d9967;
+    border-radius: 999px;
+    content: "";
+    height: 0.5rem;
+    width: 0.5rem;
+}
+
+#conversation-panel,
+#chat-panel {
+    background: var(--yazio-surface);
+    border: 1px solid var(--yazio-line);
+    border-radius: 22px;
+    box-shadow: 0 16px 45px rgba(75, 34, 57, 0.07);
+    padding: 1rem;
+}
+
+#conversation-panel {
+    height: fit-content;
+}
+
+#new-conversation button,
+#send-message button {
+    background: var(--yazio-berry) !important;
+    border: 0 !important;
+    color: white !important;
+    font-weight: 650 !important;
+}
+
+#new-conversation button:hover,
+#send-message button:hover {
+    background: var(--yazio-berry-dark) !important;
+}
+
+#conversation-list label,
+#message-input label {
+    color: var(--yazio-ink) !important;
+    font-weight: 600 !important;
+}
+
+#chatbot {
+    border: 0 !important;
+    min-height: 56vh;
+}
+
+.meal-strip {
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.4rem 0 0.25rem;
+}
+
+.meal-button button {
+    background: #fff !important;
+    border: 1px solid var(--yazio-line) !important;
+    border-radius: 999px !important;
+    color: var(--yazio-ink) !important;
+    font-size: 0.82rem !important;
+    min-width: 0 !important;
+}
+
+.meal-button button:hover {
+    background: var(--yazio-sage) !important;
+    border-color: #bfd5ba !important;
+}
+
+#privacy-note {
+    color: var(--yazio-muted);
+    font-size: 0.76rem;
+    line-height: 1.45;
+    margin-top: 1rem;
+}
+
+@media (max-width: 760px) {
+    #conversation-panel,
+    #chat-panel {
+        border-radius: 16px;
+    }
+
+    #chatbot {
+        min-height: 48vh;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}

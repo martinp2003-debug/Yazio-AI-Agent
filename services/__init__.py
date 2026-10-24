@@ -1,10 +1,10 @@
 from .chat_service import ChatService, DisplayMessage
+from .conversation_manager import ConversationManager
 from .observability_service import ObservabilityService
-from .session_store_service import SessionStoreService
 
 __all__ = [
     "ChatService",
+    "ConversationManager",
     "DisplayMessage",
     "ObservabilityService",
-    "SessionStoreService",
 ]

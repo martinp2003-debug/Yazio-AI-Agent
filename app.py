@@ -1,43 +1,22 @@
-import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import gradio as gr
-from dotenv import load_dotenv
 from fastapi import FastAPI
 
-from agent import create_agent, create_yazio_mcp_server
-from gradio_app import APP_CSS, create_gradio_app
-from services import ChatService, ObservabilityService, SessionStoreService
-
-
-load_dotenv()
+from bootstrap import build_application
+from interfaces.web import create_gradio_app, load_app_css
 
 
 def create_app() -> FastAPI:
-    """Assemble l'application et possède le cycle de vie de ses ressources."""
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError(
-            "OPENAI_API_KEY est absente. Copie .env.example vers .env "
-            "et ajoute ta clé API."
-        )
-
-    db_path = Path(os.getenv("AGENT_DB_PATH", "storage/conversations.db"))
-    store = SessionStoreService(db_path)
-    observability = ObservabilityService.from_env()
-    yazio_mcp = create_yazio_mcp_server()
-    agent = create_agent(yazio_mcp)
-    chat_service = ChatService(agent, store, observability)
-    demo = create_gradio_app(chat_service)
+    """Crée le point d'entrée web à partir du cœur applicatif."""
+    container = build_application()
+    demo = create_gradio_app(container.chat_service)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
-        try:
-            async with yazio_mcp:
-                yield
-        finally:
-            observability.flush()
+        async with container.lifespan():
+            yield
 
     fastapi_app = FastAPI(
         title="Assistant YAZIO",
@@ -50,7 +29,7 @@ def create_app() -> FastAPI:
         demo,
         path="/",
         footer_links=[],
-        css=APP_CSS,
+        css=load_app_css(),
         show_error=False,
     )
 

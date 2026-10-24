@@ -9,15 +9,18 @@ flowchart LR
     user([Utilisateur])
 
     subgraph interfaces[Interfaces]
-        web[Interface web<br/>Gradio]
-        api[Application ASGI<br/>FastAPI / Uvicorn]
-        cli[Interface terminal<br/>cli.py]
-        api --> web
+        web_entry[Serveur web<br/>app.py · FastAPI + Uvicorn]
+        web[Interface Gradio<br/>interfaces/web]
+        cli_entry[Point d'entrée<br/>cli.py]
+        cli[Interface terminal<br/>interfaces/cli.py]
+        web_entry --> web
+        cli_entry --> cli
     end
 
     subgraph application[Application]
+        bootstrap[ApplicationContainer<br/>bootstrap.py]
         chat[ChatService<br/>orchestration des conversations]
-        store[SessionStoreService<br/>gestion des sessions]
+        conversations[ConversationManager<br/>cycle de vie des conversations]
         observability[ObservabilityService<br/>traces par tour]
     end
 
@@ -30,10 +33,12 @@ flowchart LR
     end
 
     subgraph persistence[Persistance locale]
-        repository[SessionRepository<br/>métadonnées]
-        history[SQLiteSession<br/>historique des messages]
+        repository[ConversationRepository<br/>métadonnées]
+        history_store[AgentHistoryStore<br/>adaptateur du SDK]
+        history[SQLiteSession<br/>historique de l'agent]
         sqlite[(storage/conversations.db)]
         repository --> sqlite
+        history_store --> history
         history --> sqlite
     end
 
@@ -45,15 +50,21 @@ flowchart LR
         mcp --> yazio
     end
 
-    user --> api
-    user --> cli
+    user --> web_entry
+    user --> cli_entry
+    web_entry -.-> bootstrap
+    cli_entry -.-> bootstrap
     web --> chat
     cli --> chat
+    bootstrap -.-> chat
+    bootstrap -.-> conversations
+    bootstrap -.-> observability
+    bootstrap -.-> runner
     chat --> runner
-    chat --> store
+    chat --> conversations
     chat --> observability
-    store --> repository
-    store --> history
+    conversations --> repository
+    conversations --> history_store
     runner --> openai
     mcp_client --> mcp
     observability --> langfuse
@@ -64,10 +75,10 @@ flowchart LR
     classDef persistenceNode fill:#FEF3C7,stroke:#D97706,color:#78350F,stroke-width:2px
     classDef externalNode fill:#FFE4E6,stroke:#E11D48,color:#881337,stroke-width:2px
 
-    class web,api,cli interfaceNode
-    class chat,store,observability applicationNode
+    class web_entry,web,cli_entry,cli interfaceNode
+    class bootstrap,chat,conversations,observability applicationNode
     class runner,prompt,mcp_client agentNode
-    class repository,history,sqlite persistenceNode
+    class repository,history_store,history,sqlite persistenceNode
     class openai,mcp,yazio,langfuse externalNode
 
     style interfaces fill:#EFF6FF,stroke:#60A5FA,stroke-width:2px
@@ -77,21 +88,22 @@ flowchart LR
     style external fill:#FFF1F2,stroke:#FB7185,stroke-width:2px
 ```
 
-`app.py` et `cli.py` assemblent les mêmes services. Le service de conversation
-exécute l'agent avec une session persistante, tandis que l'agent appelle les
-outils YAZIO via un processus MCP séparé. L'observabilité Langfuse est
-optionnelle et se configure par variables d'environnement.
+`bootstrap.py` assemble une seule fois les services partagés par les interfaces
+web et terminal. Le service de conversation exécute l'agent avec un historique
+persistant, tandis que l'agent appelle les outils YAZIO via un processus MCP
+séparé. L'observabilité Langfuse est optionnelle et se configure par variables
+d'environnement.
 
 ## Lancer l'interface web
 
-Après avoir configuré `.env`, démarrer l'application avec :
+Configurer `.env`, puis démarrer l'application avec :
 
 ```bash
 uv run uvicorn app:app --reload
 ```
 
-Ouvre ensuite [http://localhost:8000](http://localhost:8000). L'application doit
-rester sur un seul worker afin de ne démarrer qu'un processus MCP YAZIO.
+Ouvrir ensuite [http://localhost:8000](http://localhost:8000). Conserver un seul
+worker afin de ne démarrer qu'un processus MCP YAZIO.
 
 ## Lancer l'interface terminal
 

@@ -6,14 +6,14 @@ from typing import cast
 
 
 @dataclass(frozen=True)
-class SessionRecord:
-    session_id: str
+class Conversation:
+    conversation_id: str
     title: str
     created_at: datetime
     updated_at: datetime
 
 
-class SessionRepository:
+class ConversationRepository:
     """Gère uniquement les métadonnées des conversations dans SQLite."""
 
     def __init__(self, db_path: str | Path) -> None:
@@ -21,7 +21,7 @@ class SessionRepository:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize_database()
 
-    def create(self, session_id: str, title: str) -> SessionRecord:
+    def create(self, conversation_id: str, title: str) -> Conversation:
         now: datetime = datetime.now(timezone.utc)
         with self._connect() as connection:
             connection.execute(
@@ -29,12 +29,12 @@ class SessionRepository:
                 INSERT INTO conversations (session_id, title, created_at, updated_at)
                 VALUES (?, ?, ?, ?)
                 """,
-                (session_id, title, now.isoformat(), now.isoformat()),
+                (conversation_id, title, now.isoformat(), now.isoformat()),
             )
 
-        return SessionRecord(session_id, title, now, now)
+        return Conversation(conversation_id, title, now, now)
 
-    def get(self, session_id: str) -> SessionRecord | None:
+    def get(self, conversation_id: str) -> Conversation | None:
         with self._connect() as connection:
             row: sqlite3.Row | None = connection.execute(
                 """
@@ -42,12 +42,12 @@ class SessionRepository:
                 FROM conversations
                 WHERE session_id = ?
                 """,
-                (session_id,),
+                (conversation_id,),
             ).fetchone()
 
         return self._to_record(row) if row else None
 
-    def list(self) -> list[SessionRecord]:
+    def list(self) -> list[Conversation]:
         with self._connect() as connection:
             rows: list[sqlite3.Row] = connection.execute(
                 """
@@ -59,7 +59,7 @@ class SessionRepository:
 
         return [self._to_record(row) for row in rows]
 
-    def touch(self, session_id: str) -> None:
+    def touch(self, conversation_id: str) -> None:
         now: str = datetime.now(timezone.utc).isoformat()
         with self._connect() as connection:
             cursor: sqlite3.Cursor = connection.execute(
@@ -68,11 +68,11 @@ class SessionRepository:
                 SET updated_at = ?
                 WHERE session_id = ?
                 """,
-                (now, session_id),
+                (now, conversation_id),
             )
 
         if cursor.rowcount == 0:
-            raise LookupError(f"Session inconnue : {session_id}")
+            raise LookupError(f"Conversation inconnue : {conversation_id}")
 
     def _connect(self) -> sqlite3.Connection:
         connection: sqlite3.Connection = sqlite3.connect(self.db_path)
@@ -93,9 +93,9 @@ class SessionRepository:
             )
 
     @staticmethod
-    def _to_record(row: sqlite3.Row) -> SessionRecord:
-        return SessionRecord(
-            session_id=cast(str, row["session_id"]),
+    def _to_record(row: sqlite3.Row) -> Conversation:
+        return Conversation(
+            conversation_id=cast(str, row["session_id"]),
             title=cast(str, row["title"]),
             created_at=datetime.fromisoformat(cast(str, row["created_at"])),
             updated_at=datetime.fromisoformat(cast(str, row["updated_at"])),

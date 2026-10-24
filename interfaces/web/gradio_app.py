@@ -1,11 +1,12 @@
 import logging
 from collections.abc import Mapping, Sequence
 from functools import partial
+from pathlib import Path
 from typing import Literal, TypeAlias, cast
 
 import gradio as gr
 
-from data import SessionRecord
+from data import Conversation
 from services import ChatService, DisplayMessage
 
 
@@ -15,149 +16,12 @@ ComponentUpdate: TypeAlias = dict[str, object]
 GradioHistory: TypeAlias = Sequence[Mapping[str, object]]
 
 
-APP_CSS = """
-:root {
-    --yazio-bg: #fff8fa;
-    --yazio-surface: #ffffff;
-    --yazio-ink: #301b2b;
-    --yazio-muted: #796b75;
-    --yazio-berry: #e94f6d;
-    --yazio-berry-dark: #bf334f;
-    --yazio-sage: #ddebd9;
-    --yazio-line: #eadde2;
-}
+APP_CSS_PATH = Path(__file__).with_name("assets") / "app.css"
 
-.gradio-container {
-    background: var(--yazio-bg) !important;
-    color: var(--yazio-ink) !important;
-    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif !important;
-    max-width: none !important;
-}
 
-#app-header {
-    align-items: center;
-    border-bottom: 1px solid var(--yazio-line);
-    margin-bottom: 1rem;
-    padding: 0.35rem 0 1rem;
-}
-
-#brand-lockup h1 {
-    color: var(--yazio-ink);
-    font-size: clamp(1.55rem, 3vw, 2.35rem);
-    font-weight: 650;
-    letter-spacing: -0.045em;
-    line-height: 1;
-    margin: 0;
-}
-
-#brand-lockup p {
-    color: var(--yazio-muted);
-    margin: 0.45rem 0 0;
-}
-
-#status-pill {
-    align-items: center;
-    background: var(--yazio-sage);
-    border-radius: 999px;
-    color: #35523b;
-    display: inline-flex;
-    font-size: 0.78rem;
-    font-weight: 650;
-    gap: 0.45rem;
-    padding: 0.45rem 0.75rem;
-    width: fit-content;
-}
-
-#status-pill::before {
-    background: #5d9967;
-    border-radius: 999px;
-    content: "";
-    height: 0.5rem;
-    width: 0.5rem;
-}
-
-#conversation-panel,
-#chat-panel {
-    background: var(--yazio-surface);
-    border: 1px solid var(--yazio-line);
-    border-radius: 22px;
-    box-shadow: 0 16px 45px rgba(75, 34, 57, 0.07);
-    padding: 1rem;
-}
-
-#conversation-panel {
-    height: fit-content;
-}
-
-#new-conversation button,
-#send-message button {
-    background: var(--yazio-berry) !important;
-    border: 0 !important;
-    color: white !important;
-    font-weight: 650 !important;
-}
-
-#new-conversation button:hover,
-#send-message button:hover {
-    background: var(--yazio-berry-dark) !important;
-}
-
-#conversation-list label,
-#message-input label {
-    color: var(--yazio-ink) !important;
-    font-weight: 600 !important;
-}
-
-#chatbot {
-    border: 0 !important;
-    min-height: 56vh;
-}
-
-.meal-strip {
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0.4rem 0 0.25rem;
-}
-
-.meal-button button {
-    background: #fff !important;
-    border: 1px solid var(--yazio-line) !important;
-    border-radius: 999px !important;
-    color: var(--yazio-ink) !important;
-    font-size: 0.82rem !important;
-    min-width: 0 !important;
-}
-
-.meal-button button:hover {
-    background: var(--yazio-sage) !important;
-    border-color: #bfd5ba !important;
-}
-
-#privacy-note {
-    color: var(--yazio-muted);
-    font-size: 0.76rem;
-    line-height: 1.45;
-    margin-top: 1rem;
-}
-
-@media (max-width: 760px) {
-    #conversation-panel,
-    #chat-panel {
-        border-radius: 16px;
-    }
-
-    #chatbot {
-        min-height: 48vh;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-        scroll-behavior: auto !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-"""
+def load_app_css() -> str:
+    """Charge les styles de l'interface depuis leur fichier dédié."""
+    return APP_CSS_PATH.read_text(encoding="utf-8")
 
 
 def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
@@ -173,22 +37,22 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
             conversations = [chat_service.create_conversation()]
 
         selected = conversations[0]
-        history = await chat_service.load_history(selected.session_id)
+        history = await chat_service.load_history(selected.conversation_id)
         return (
-            selected.session_id,
+            selected.conversation_id,
             gr.update(
                 choices=_conversation_choices(conversations),
-                value=selected.session_id,
+                value=selected.conversation_id,
             ),
             history,
         )
 
     async def select_conversation(
-        session_id: str | None,
+        conversation_id: str | None,
     ) -> tuple[str | None, list[DisplayMessage]]:
-        if not session_id:
+        if not conversation_id:
             return None, []
-        return session_id, await chat_service.load_history(session_id)
+        return conversation_id, await chat_service.load_history(conversation_id)
 
     def create_conversation() -> tuple[
         str,
@@ -198,10 +62,10 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
         conversation = chat_service.create_conversation()
         conversations = chat_service.list_conversations()
         return (
-            conversation.session_id,
+            conversation.conversation_id,
             gr.update(
                 choices=_conversation_choices(conversations),
-                value=conversation.session_id,
+                value=conversation.conversation_id,
             ),
             [],
         )
@@ -221,10 +85,10 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
         return "", current_history
 
     async def answer(
-        session_id: str | None,
+        conversation_id: str | None,
         history: GradioHistory,
     ) -> tuple[list[DisplayMessage], ComponentUpdate]:
-        if not session_id:
+        if not conversation_id:
             raise gr.Error("Crée ou sélectionne une conversation.")
 
         normalized_history = _normalize_gradio_history(history)
@@ -233,7 +97,7 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
 
         message = normalized_history[-1]["content"]
         try:
-            response = await chat_service.send_message(session_id, message)
+            response = await chat_service.send_message(conversation_id, message)
         except Exception as error:
             logger.exception("Échec du tour de conversation")
             raise gr.Error(
@@ -248,7 +112,7 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
             updated_history,
             gr.update(
                 choices=_conversation_choices(chat_service.list_conversations()),
-                value=session_id,
+                value=conversation_id,
             ),
         )
 
@@ -257,7 +121,7 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
         fill_height=True,
         fill_width=True,
     ) as demo:
-        session_id = gr.State(value=None)
+        conversation_id = gr.State(value=None)
 
         with gr.Row(elem_id="app-header"):
             gr.HTML(
@@ -343,18 +207,18 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
 
         demo.load(
             initialize,
-            outputs=[session_id, conversation_list, chatbot],
+            outputs=[conversation_id, conversation_list, chatbot],
             queue=False,
         )
         conversation_list.input(
             select_conversation,
             inputs=[conversation_list],
-            outputs=[session_id, chatbot],
+            outputs=[conversation_id, chatbot],
             queue=False,
         )
         new_conversation.click(
             create_conversation,
-            outputs=[session_id, conversation_list, chatbot],
+            outputs=[conversation_id, conversation_list, chatbot],
             queue=False,
         )
 
@@ -377,7 +241,7 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
                 queue=False,
             ).then(
                 answer,
-                inputs=[session_id, chatbot],
+                inputs=[conversation_id, chatbot],
                 outputs=[chatbot, conversation_list],
                 concurrency_limit=1,
                 concurrency_id="yazio-agent",
@@ -387,13 +251,13 @@ def create_gradio_app(chat_service: ChatService) -> gr.Blocks:
 
 
 def _conversation_choices(
-    conversations: Sequence[SessionRecord],
+    conversations: Sequence[Conversation],
 ) -> list[tuple[str, str]]:
     return [
         (
             f"{conversation.title} · "
             f"{conversation.updated_at.astimezone():%d/%m %H:%M}",
-            conversation.session_id,
+            conversation.conversation_id,
         )
         for conversation in conversations
     ]

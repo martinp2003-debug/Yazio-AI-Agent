@@ -3,10 +3,10 @@ from typing import Literal, TypedDict, cast
 
 from agents import Agent, Runner
 
-from data import SessionRecord
+from data import Conversation
 
+from .conversation_manager import ConversationManager
 from .observability_service import ObservabilityService
-from .session_store_service import SessionStoreService
 
 
 class DisplayMessage(TypedDict):
@@ -23,21 +23,21 @@ class ChatService:
     def __init__(
         self,
         agent: Agent[None],
-        store: SessionStoreService,
+        conversations: ConversationManager,
         observability: ObservabilityService,
     ) -> None:
         self._agent = agent
-        self._store = store
+        self._conversations = conversations
         self._observability = observability
 
-    def create_conversation(self, title: str | None = None) -> SessionRecord:
-        return self._store.create_session(title)
+    def create_conversation(self, title: str | None = None) -> Conversation:
+        return self._conversations.create_conversation(title)
 
-    def list_conversations(self) -> list[SessionRecord]:
-        return self._store.list_sessions()
+    def list_conversations(self) -> list[Conversation]:
+        return self._conversations.list_conversations()
 
-    async def load_history(self, session_id: str) -> list[DisplayMessage]:
-        session = self._store.open_session(session_id)
+    async def load_history(self, conversation_id: str) -> list[DisplayMessage]:
+        session = self._conversations.open_history(conversation_id)
         try:
             items = await session.get_items()
             return _to_display_messages(items)
@@ -46,7 +46,7 @@ class ChatService:
 
     async def send_message(
         self,
-        session_id: str,
+        conversation_id: str,
         message: str,
         *,
         channel: ChatChannel = "web",
@@ -58,15 +58,18 @@ class ChatService:
         if not normalized_message:
             raise ValueError("Le message ne peut pas être vide.")
 
-        session = self._store.open_session(session_id)
+        session = self._conversations.open_history(conversation_id)
         try:
-            with self._observability.observe_turn(session_id, channel=channel):
+            with self._observability.observe_turn(
+                conversation_id,
+                channel=channel,
+            ):
                 result = await Runner.run(
                     self._agent,
                     normalized_message,
                     session=session,
                 )
-            self._store.mark_session_used(session_id)
+            self._conversations.mark_conversation_used(conversation_id)
             return str(result.final_output)
         finally:
             session.close()

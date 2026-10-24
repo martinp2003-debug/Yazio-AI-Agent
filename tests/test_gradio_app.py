@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import gradio as gr
 
-from data import SessionRecord
-from gradio_app import (
+from data import Conversation
+from interfaces.web.gradio_app import (
     _conversation_choices,
     _normalize_gradio_history,
     create_gradio_app,
@@ -26,8 +26,8 @@ class GradioAppTest(unittest.TestCase):
         self.assertIn("textbox", component_types)
 
     def test_conversation_choices_use_id_as_value(self) -> None:
-        conversation = SessionRecord(
-            session_id="session-123",
+        conversation = Conversation(
+            conversation_id="session-123",
             title="Petit-déjeuner",
             created_at=datetime(2026, 10, 21, tzinfo=timezone.utc),
             updated_at=datetime(2026, 10, 21, 8, 30, tzinfo=timezone.utc),
